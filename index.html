@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>うなぎ屋 ヘルプ人員調整システム</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic', sans-serif; background: #f5f0e8; color: #333; min-height: 100vh; }
+
+  /* Header */
+  .header { background: #5c3d1e; color: #fff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
+  .header .user-info { font-size: 12px; opacity: 0.85; display: none; }
+  @media(min-width: 480px) { .header h1 { font-size: 18px; } .header .user-info { display: inline; } }
+  .header .logout-btn { background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+  .header .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+  /* Layout */
+  .container { max-width: 960px; margin: 0 auto; padding: 16px 12px; }
+  @media(min-width: 600px) { .container { padding: 24px 16px; } }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Login */
+  .login-wrap { display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 52px); padding: 16px; }
+  .login-card { background: #fff; border-radius: 12px; padding: 28px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 420px; }
+  @media(min-width: 480px) { .login-card { padding: 40px 36px; } }
+  .login-card h2 { font-size: 20px; color: #5c3d1e; margin-bottom: 6px; text-align: center; }
+  .login-card p { text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
+  .form-group select, .form-group input {
+    width: 100%; padding: 12px 14px; border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 16px; /* 16px prevents iOS zoom */ outline: none; transition: border-color .2s;
+    -webkit-appearance: none; appearance: none; background: #fff;
+  }
+  .form-group select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+  .form-group select:focus, .form-group input:focus { border-color: #8b5e3c; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 8px; border: none; cursor: pointer; font-size: 15px; font-weight: 600; transition: all .2s; touch-action: manipulation; }
+  .btn-primary { background: #8b5e3c; color: #fff; }
+  .btn-primary:hover, .btn-primary:active { background: #6d4a2e; }
+  .btn-success { background: #2e7d32; color: #fff; }
+  .btn-success:hover, .btn-success:active { background: #1b5e20; }
+  .btn-danger { background: #c62828; color: #fff; }
+  .btn-danger:hover, .btn-danger:active { background: #8e1c1c; }
+  .btn-outline { background: #fff; color: #8b5e3c; border: 1.5px solid #8b5e3c; }
+  .btn-outline:hover, .btn-outline:active { background: #f9f3ec; }
+  .btn-block { width: 100%; margin-top: 8px; }
+  .btn-sm { padding: 8px 14px; font-size: 13px; }
+
+  /* Dashboard */
+  .page-title { font-size: 17px; font-weight: 700; color: #5c3d1e; margin-bottom: 16px; }
+  @media(min-width: 600px) { .page-title { font-size: 20px; margin-bottom: 20px; } }
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: #fff; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-left: 4px solid #8b5e3c; }
+  .stat-card .stat-num { font-size: 24px; font-weight: 700; color: #8b5e3c; }
+  .stat-card .stat-label { font-size: 11px; color: #888; margin-top: 2px; line-height: 1.3; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #e0d5c5; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn { padding: 10px 16px; border: none; background: none; cursor: pointer; font-size: 13px; font-weight: 600; color: #888; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .2s; white-space: nowrap; touch-action: manipulation; }
+  @media(min-width: 480px) { .tab-btn { padding: 10px 20px; font-size: 14px; } }
+  .tab-btn.active { color: #8b5e3c; border-bottom-color: #8b5e3c; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Cards */
+  .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 12px; }
+  @media(min-width: 600px) { .card { padding: 20px; } }
+  .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px; }
+  .card-title { font-size: 15px; font-weight: 700; color: #333; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-open { background: #fff3cd; color: #856404; }
+  .badge-responded { background: #cce5ff; color: #004085; }
+  .badge-approved { background: #d4edda; color: #155724; }
+  .badge-rejected { background: #f8d7da; color: #721c24; }
+  .badge-closed { background: #e2e3e5; color: #383d41; }
+  .card-meta { font-size: 12px; color: #666; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .staff-tag { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-right: 6px; }
+  .tag-hall { background: #e8f5e9; color: #2e7d32; }
+  .tag-yaki { background: #fff3e0; color: #e65100; }
+  .tag-kitchen { background: #e3f2fd; color: #1565c0; }
+  .responses-list { border-top: 1px solid #f0e8dc; margin-top: 12px; padding-top: 12px; }
+  .response-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #fafafa; border-radius: 8px; margin-bottom: 6px; font-size: 13px; flex-wrap: wrap; gap: 6px; }
+  .response-store { font-weight: 600; color: #555; }
+  .response-count { color: #8b5e3c; font-weight: 700; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  /* Top bar for store page */
+  .page-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; }
+  .page-top .btn { font-size: 13px; padding: 8px 14px; white-space: nowrap; }
+  @media(min-width: 480px) { .page-top .btn { font-size: 14px; padding: 10px 18px; } }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: flex-end; }
+  @media(min-width: 600px) { .modal-overlay { align-items: center; } }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #fff; border-radius: 14px 14px 0 0; padding: 24px 20px; width: 100%; max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  @media(min-width: 600px) { .modal { border-radius: 14px; max-width: 480px; width: 90%; } }
+  .modal h3 { font-size: 17px; color: #5c3d1e; margin-bottom: 18px; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+  /* Empty */
+  .empty { text-align: center; padding: 40px 20px; color: #aaa; }
+  .empty-icon { font-size: 36px; margin-bottom: 10px; }
+  .empty p { font-size: 13px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+
+  /* Admin specific */
+  .admin-badge { background: #5c3d1e; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 6px; }
+
+  /* Store manage list */
+  .store-manage-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0e8dc; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header" id="appHeader" style="display:none">
+  <h1>🍣 ヘルプ人員調整</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="user-info" id="headerUser"></span>
+    <button class="logout-btn" onclick="logout()">ログアウト</button>
+  </div>
+</div>
+
+<!-- ログイン画面 -->
+<div id="pageLogin" class="page active">
+  <div class="login-wrap">
+    <div class="login-card">
+      <h2>🍣 ヘルプ人員調整</h2>
+      <p>うなぎ屋 スタッフ調整システム</p>
+      <div class="form-group">
+        <label>役割を選択</label>
+        <select id="loginRole" onchange="onRoleChange()">
+          <option value="">-- 選択してください --</option>
+          <option value="admin">全体シフト管理者</option>
+          <option value="store">店舗管理者</option>
+        </select>
+      </div>
+      <div class="form-group" id="storeSelectGroup" style="display:none">
+        <label>店舗を選択</label>
+        <select id="loginStore">
+          <option value="">-- 店舗を選択 --</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="login()">ログイン</button>
+    </div>
+  </div>
+</div>
+
+<!-- 店舗管理者ダッシュボード -->
+<div id="pageStore" class="page">
+  <div class="container">
+    <div class="page-top">
+      <div class="page-title" id="storeName" style="margin-bottom:0"></div>
+      <button class="btn btn-primary" onclick="openRequestModal()">＋ 依頼を出す</button>
+    </div>
+    <div class="stats-row" id="storeStats"></div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('myRequests','store')">自店舗の依頼</button>
+      <button class="tab-btn" onclick="switchTab('openRequests','store')">他店舗の依頼 <span id="openBadge" style="background:#e74c3c;color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:2px"></span></button>
+      <button class="tab-btn" onclick="switchTab('history','store')">履歴</button>
+    </div>
+    <div id="myRequests" class="tab-content active"><div id="myRequestsList"></div></div>
+    <div id="openRequests" class="tab-content"><div id="openRequestsList"></div></div>
+    <div id="history" class="tab-content"><div id="historyList"></div></div>
+  </div>
+</div>
+
+<!-- 全体管理者ダッシュボード -->
+<div id="pageAdmin" class="page">
+  <div class="container">
+    <div class="page-top">
+      <div class="page-title" style="margin-bottom:0">全体シフト管理 <span class="admin-badge">管理者</span></div>
+      <button class="btn btn-outline" style="font-size:13px;padding:8px 12px" onclick="openStoreModal()">⚙ 店舗管理</button>
+    </div>
+    <div class="stats-row" id="adminStats"></div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('pendingApproval','admin')">承認待ち <span id="approvalBadge" style="background:#e74c3c;color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:2px"></span></button>
+      <button class="tab-btn" onclick="switchTab('allRequests','admin')">全リクエスト</button>
+      <button class="tab-btn" onclick="switchTab('storeList','admin')">店舗一覧</button>
+    </div>
+    <div id="pendingApproval" class="tab-content active"><div id="pendingList"></div></div>
+    <div id="allRequests" class="tab-content"><div id="allRequestsList"></div></div>
+    <div id="storeList" class="tab-content"><div id="storeListContent"></div></div>
+  </div>
+</div>
+
+<!-- モーダル：ヘルプ依頼作成 -->
+<div class="modal-overlay" id="requestModal">
+  <div class="modal">
+    <h3>ヘルプ依頼を出す</h3>
+    <div class="form-group">
+      <label>日付</label>
+      <input type="date" id="reqDate">
+    </div>
+    <div class="form-group">
+      <label>時間帯</label>
+      <select id="reqTime">
+        <option value="ランチ（11:00〜15:00）">ランチ（11:00〜15:00）</option>
+        <option value="ディナー（17:00〜22:00）">ディナー（17:00〜22:00）</option>
+        <option value="終日">終日</option>
+        <option value="その他">その他</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>スタッフ種別</label>
+      <select id="reqStaffType">
+        <option value="ホール">ホールスタッフ</option>
+        <option value="焼き">焼きスタッフ</option>
+        <option value="キッチン">キッチンスタッフ</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>必要人数</label>
+      <select id="reqCount">
+        <option value="1">1名</option>
+        <option value="2">2名</option>
+        <option value="3">3名</option>
+        <option value="4">4名</option>
+        <option value="5">5名</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>備考（任意）</label>
+      <input type="text" id="reqNote" placeholder="例：繁忙期のため急ぎです">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('requestModal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="submitRequest()">依頼を出す</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル：応答 -->
+<div class="modal-overlay" id="respondModal">
+  <div class="modal">
+    <h3>ヘルプ応答</h3>
+    <div id="respondDetail"></div>
+    <div class="form-group" style="margin-top:16px">
+      <label>派遣できる人数</label>
+      <select id="respondCount"></select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('respondModal')">キャンセル</button>
+      <button class="btn btn-success" onclick="submitResponse()">応答を送る</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル：店舗管理 -->
+<div class="modal-overlay" id="storeModal">
+  <div class="modal">
+    <h3>店舗管理</h3>
+    <div id="storeManageList" style="margin-bottom:16px;max-height:260px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="newStoreName" placeholder="新しい店舗名" style="flex:1;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:16px">
+      <button class="btn btn-primary" onclick="addStore()">追加</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-block" onclick="closeModal('storeModal')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ==============================
+// DATA
+// ==============================
+let stores = [
+  { id: 1, name: '上野本店' },
+  { id: 2, name: '銀座店' },
+  { id: 3, name: '新宿店' },
+  { id: 4, name: '渋谷店' },
+];
+
+let requests = [
+  {
+    id: 1, storeId: 2, date: '2026-06-15', time: 'ランチ（11:00〜15:00）',
+    staffType: '焼き', count: 2, note: '週末で混みます',
+    status: 'responded', createdAt: '2026-06-10',
+    responses: [{ storeId: 1, count: 1, status: 'pending' }, { storeId: 3, count: 1, status: 'pending' }]
+  },
+  {
+    id: 2, storeId: 3, date: '2026-06-18', time: 'ディナー（17:00〜22:00）',
+    staffType: 'ホール', count: 1, note: '',
+    status: 'open', createdAt: '2026-06-10',
+    responses: []
+  },
+  {
+    id: 3, storeId: 1, date: '2026-06-12', time: '終日',
+    staffType: 'キッチン', count: 1, note: 'スタッフ急病のため',
+    status: 'approved', createdAt: '2026-06-09',
+    responses: [{ storeId: 4, count: 1, status: 'approved' }]
+  },
+];
+
+let nextId = 4;
+let currentUser = null;
+let respondingRequestId = null;
+
+// ==============================
+// LOGIN / LOGOUT
+// ==============================
+function onRoleChange() {
+  const role = document.getElementById('loginRole').value;
+  const sg = document.getElementById('storeSelectGroup');
+  if (role === 'store') {
+    sg.style.display = 'block';
+    const sel = document.getElementById('loginStore');
+    sel.innerHTML = '<option value="">-- 店舗を選択 --</option>';
+    stores.forEach(s => sel.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+  } else {
+    sg.style.display = 'none';
+  }
+}
+
+function login() {
+  const role = document.getElementById('loginRole').value;
+  if (!role) { showToast('役割を選択してください'); return; }
+  if (role === 'store') {
+    const storeId = parseInt(document.getElementById('loginStore').value);
+    if (!storeId) { showToast('店舗を選択してください'); return; }
+    const store = stores.find(s => s.id === storeId);
+    currentUser = { role: 'store', storeId, storeName: store.name };
+    document.getElementById('headerUser').textContent = store.name;
+  } else {
+    currentUser = { role: 'admin' };
+    document.getElementById('headerUser').textContent = '全体管理者';
+  }
+  document.getElementById('appHeader').style.display = 'flex';
+  showPage(role === 'admin' ? 'pageAdmin' : 'pageStore');
+  if (role === 'store') renderStoreDashboard();
+  else renderAdminDashboard();
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('appHeader').style.display = 'none';
+  document.getElementById('loginRole').value = '';
+  document.getElementById('storeSelectGroup').style.display = 'none';
+  showPage('pageLogin');
+}
+
+// ==============================
+// NAVIGATION
+// ==============================
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function switchTab(tabId, context) {
+  const pageId = context === 'store' ? 'pageStore' : 'pageAdmin';
+  const tabs = document.querySelectorAll(`#${pageId} .tab-btn`);
+  const contents = document.querySelectorAll(`#${pageId} .tab-content`);
+  tabs.forEach((t, i) => {
+    const isActive = t.getAttribute('onclick').includes(`'${tabId}'`);
+    t.classList.toggle('active', isActive);
+    contents[i].classList.toggle('active', isActive);
+  });
+  if (tabId === 'myRequests') renderMyRequests();
+  if (tabId === 'openRequests') renderOpenRequests();
+  if (tabId === 'history') renderHistory();
+  if (tabId === 'pendingApproval') renderPendingApproval();
+  if (tabId === 'allRequests') renderAllRequests();
+  if (tabId === 'storeList') renderStoreListAdmin();
+}
+
+// ==============================
+// STORE DASHBOARD
+// ==============================
+function renderStoreDashboard() {
+  document.getElementById('storeName').textContent = currentUser.storeName;
+  const myReqs = requests.filter(r => r.storeId === currentUser.storeId);
+  const openFromOthers = requests.filter(r => r.storeId !== currentUser.storeId && r.status === 'open');
+  document.getElementById('storeStats').innerHTML = `
+    <div class="stat-card"><div class="stat-num">${myReqs.filter(r=>r.status!=='approved'&&r.status!=='rejected').length}</div><div class="stat-label">進行中の依頼</div></div>
+    <div class="stat-card"><div class="stat-num">${openFromOthers.length}</div><div class="stat-label">他店舗の募集</div></div>
+    <div class="stat-card"><div class="stat-num">${myReqs.filter(r=>r.status==='approved').length}</div><div class="stat-label">承認済み</div></div>
+  `;
+  const badge = document.getElementById('openBadge');
+  badge.textContent = openFromOthers.length > 0 ? openFromOthers.length : '';
+  renderMyRequests();
+}
+
+function renderMyRequests() {
+  const list = requests.filter(r => r.storeId === currentUser.storeId && (r.status === 'open' || r.status === 'responded'));
+  const el = document.getElementById('myRequestsList');
+  if (list.length === 0) { el.innerHTML = emptyState('📋', '進行中の依頼はありません'); return; }
+  el.innerHTML = list.map(r => requestCard(r, 'store-own')).join('');
+}
+
+function renderOpenRequests() {
+  const list = requests.filter(r => r.storeId !== currentUser.storeId && r.status === 'open');
+  const el = document.getElementById('openRequestsList');
+  if (list.length === 0) { el.innerHTML = emptyState('🎉', '他店舗の募集はありません'); return; }
+  el.innerHTML = list.map(r => requestCard(r, 'store-respond')).join('');
+}
+
+function renderHistory() {
+  const list = requests.filter(r => r.storeId === currentUser.storeId && (r.status === 'approved' || r.status === 'rejected'));
+  const el = document.getElementById('historyList');
+  if (list.length === 0) { el.innerHTML = emptyState('📂', '履歴はありません'); return; }
+  el.innerHTML = list.map(r => requestCard(r, 'history')).join('');
+}
+
+// ==============================
+// ADMIN DASHBOARD
+// ==============================
+function renderAdminDashboard() {
+  const pending = requests.filter(r => r.status === 'responded');
+  document.getElementById('adminStats').innerHTML = `
+    <div class="stat-card"><div class="stat-num">${pending.length}</div><div class="stat-label">承認待ち</div></div>
+    <div class="stat-card"><div class="stat-num">${requests.filter(r=>r.status==='open').length}</div><div class="stat-label">募集中</div></div>
+    <div class="stat-card"><div class="stat-num">${requests.filter(r=>r.status==='approved').length}</div><div class="stat-label">承認済み</div></div>
+    <div class="stat-card"><div class="stat-num">${stores.length}</div><div class="stat-label">登録店舗</div></div>
+  `;
+  document.getElementById('approvalBadge').textContent = pending.length > 0 ? pending.length : '';
+  renderPendingApproval();
+}
+
+function renderPendingApproval() {
+  const list = requests.filter(r => r.status === 'responded');
+  const el = document.getElementById('pendingList');
+  if (list.length === 0) { el.innerHTML = emptyState('✅', '承認待ちのリクエストはありません'); return; }
+  el.innerHTML = list.map(r => requestCard(r, 'admin-approve')).join('');
+}
+
+function renderAllRequests() {
+  const el = document.getElementById('allRequestsList');
+  if (requests.length === 0) { el.innerHTML = emptyState('📋', 'リクエストはありません'); return; }
+  el.innerHTML = [...requests].reverse().map(r => requestCard(r, 'admin-view')).join('');
+}
+
+function renderStoreListAdmin() {
+  const el = document.getElementById('storeListContent');
+  el.innerHTML = stores.map(s => `
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px">
+      <div>
+        <div style="font-weight:700;font-size:15px">${s.name}</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">依頼数: ${requests.filter(r=>r.storeId===s.id).length}件</div>
+      </div>
+      <span style="font-size:20px">🏪</span>
+    </div>
+  `).join('');
+}
+
+// ==============================
+// HELPERS
+// ==============================
+function emptyState(icon, msg) {
+  return `<div class="empty"><div class="empty-icon">${icon}</div><p>${msg}</p></div>`;
+}
+
+function staffTag(type) {
+  const cls = type === 'ホール' ? 'tag-hall' : type === '焼き' ? 'tag-yaki' : 'tag-kitchen';
+  return `<span class="staff-tag ${cls}">${type}スタッフ</span>`;
+}
+
+function statusBadge(status) {
+  const map = { open:'badge-open', responded:'badge-responded', approved:'badge-approved', rejected:'badge-rejected' };
+  const lbl = { open:'募集中', responded:'承認待ち', approved:'承認済み', rejected:'却下' };
+  return `<span class="badge ${map[status]||'badge-closed'}">${lbl[status]||status}</span>`;
+}
+
+function storeName(id) {
+  const s = stores.find(s => s.id === id);
+  return s ? s.name : '不明';
+}
+
+function requestCard(r, mode) {
+  const responsesHtml = r.responses.length > 0 ? `
+    <div class="responses-list">
+      <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600">応答店舗</div>
+      ${r.responses.map(res => `
+        <div class="response-item">
+          <span class="response-store">🏪 ${storeName(res.storeId)}</span>
+          <span class="response-count">${res.count}名 派遣可能</span>
+          ${mode === 'admin-approve' ? `
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-success btn-sm" onclick="approveResponse(${r.id},${res.storeId})">承認</button>
+              <button class="btn btn-danger btn-sm" onclick="rejectResponse(${r.id},${res.storeId})">却下</button>
+            </div>
+          ` : `<span class="badge ${res.status==='approved'?'badge-approved':res.status==='rejected'?'badge-rejected':'badge-responded'}">${res.status==='approved'?'承認済':res.status==='rejected'?'却下':'検討中'}</span>`}
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const actionHtml = mode === 'store-respond' ? `
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="openRespondModal(${r.id})">応答する</button>
+    </div>
+  ` : '';
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${storeName(r.storeId)}</span>
+        ${statusBadge(r.status)}
+      </div>
+      <div class="card-meta">
+        <span>📅 ${r.date}</span>
+        <span>⏰ ${r.time}</span>
+        <span>👥 ${r.count}名</span>
+      </div>
+      <div>${staffTag(r.staffType)}</div>
+      ${r.note ? `<div style="font-size:13px;color:#777;margin-top:8px">📝 ${r.note}</div>` : ''}
+      ${responsesHtml}
+      ${actionHtml}
+    </div>
+  `;
+}
+
+// ==============================
+// MODALS
+// ==============================
+function openRequestModal() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('reqDate').value = today;
+  document.getElementById('reqNote').value = '';
+  document.getElementById('requestModal').classList.add('open');
+}
+
+function submitRequest() {
+  const date = document.getElementById('reqDate').value;
+  const time = document.getElementById('reqTime').value;
+  const staffType = document.getElementById('reqStaffType').value;
+  const count = parseInt(document.getElementById('reqCount').value);
+  const note = document.getElementById('reqNote').value;
+  if (!date) { showToast('日付を入力してください'); return; }
+  requests.push({ id: nextId++, storeId: currentUser.storeId, date, time, staffType, count, note, status: 'open', createdAt: new Date().toISOString().split('T')[0], responses: [] });
+  closeModal('requestModal');
+  renderStoreDashboard();
+  showToast('依頼を送信しました！');
+}
+
+function openRespondModal(reqId) {
+  respondingRequestId = reqId;
+  const r = requests.find(r => r.id === reqId);
+  document.getElementById('respondDetail').innerHTML = `
+    <div style="background:#f9f3ec;border-radius:8px;padding:14px">
+      <div style="font-weight:700;margin-bottom:6px">${storeName(r.storeId)} からの依頼</div>
+      <div style="font-size:13px;color:#555;line-height:1.6">
+        📅 ${r.date} / ⏰ ${r.time}<br>
+        ${staffTag(r.staffType)} ${r.count}名必要
+        ${r.note ? `<br>📝 ${r.note}` : ''}
+      </div>
+    </div>
+  `;
+  const sel = document.getElementById('respondCount');
+  sel.innerHTML = '';
+  for (let i = 1; i <= r.count; i++) sel.innerHTML += `<option value="${i}">${i}名</option>`;
+  document.getElementById('respondModal').classList.add('open');
+}
+
+function submitResponse() {
+  const r = requests.find(r => r.id === respondingRequestId);
+  const count = parseInt(document.getElementById('respondCount').value);
+  if (r.responses.find(res => res.storeId === currentUser.storeId)) {
+    showToast('既に応答済みです'); closeModal('respondModal'); return;
+  }
+  r.responses.push({ storeId: currentUser.storeId, count, status: 'pending' });
+  r.status = 'responded';
+  closeModal('respondModal');
+  renderStoreDashboard();
+  showToast('応答を送りました！');
+}
+
+function approveResponse(reqId, respStoreId) {
+  const r = requests.find(r => r.id === reqId);
+  r.responses.find(res => res.storeId === respStoreId).status = 'approved';
+  r.status = 'approved';
+  renderAdminDashboard();
+  showToast(`${storeName(respStoreId)} の応答を承認しました`);
+}
+
+function rejectResponse(reqId, respStoreId) {
+  const r = requests.find(r => r.id === reqId);
+  const res = r.responses.find(res => res.storeId === respStoreId);
+  res.status = 'rejected';
+  if (!r.responses.some(res => res.storeId !== respStoreId && res.status !== 'rejected')) r.status = 'open';
+  renderAdminDashboard();
+  showToast(`${storeName(respStoreId)} の応答を却下しました`);
+}
+
+function openStoreModal() {
+  renderStoreManageList();
+  document.getElementById('storeModal').classList.add('open');
+}
+
+function renderStoreManageList() {
+  document.getElementById('storeManageList').innerHTML = stores.map(s => `
+    <div class="store-manage-item">
+      <span style="font-weight:600">${s.name}</span>
+      ${stores.length > 1
+        ? `<button class="btn btn-sm" onclick="removeStore(${s.id})" style="background:#fff;color:#c62828;border:1px solid #c62828">削除</button>`
+        : '<span style="color:#aaa;font-size:12px">最低1店舗</span>'}
+    </div>
+  `).join('');
+}
+
+function addStore() {
+  const name = document.getElementById('newStoreName').value.trim();
+  if (!name) { showToast('店舗名を入力してください'); return; }
+  if (stores.length >= 20) { showToast('最大20店舗まで登録できます'); return; }
+  stores.push({ id: Math.max(...stores.map(s => s.id)) + 1, name });
+  document.getElementById('newStoreName').value = '';
+  renderStoreManageList();
+  renderAdminDashboard();
+  showToast(`「${name}」を追加しました`);
+}
+
+function removeStore(id) {
+  stores = stores.filter(s => s.id !== id);
+  renderStoreManageList();
+  renderAdminDashboard();
+  showToast('店舗を削除しました');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
