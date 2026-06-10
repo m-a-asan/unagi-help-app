@@ -125,8 +125,16 @@
   <h1>🍣 ヘルプ人員調整</h1>
   <div style="display:flex;align-items:center;gap:10px">
     <span class="user-info" id="headerUser"></span>
+    <button class="logout-btn" onclick="refreshData()" id="refreshBtn">🔄 更新</button>
     <button class="logout-btn" onclick="logout()">ログアウト</button>
   </div>
+</div>
+
+<!-- 読み込みオーバーレイ -->
+<div id="loadingOverlay" style="position:fixed;inset:0;background:#f5f0e8;display:flex;align-items:center;justify-content:center;z-index:2000;flex-direction:column;gap:14px;text-align:center;padding:20px">
+  <div style="font-size:40px">🍣</div>
+  <div id="loadingText" style="color:#8b5e3c;font-weight:600;font-size:15px">読み込み中...</div>
+  <button id="loadingRetryBtn" class="btn btn-primary" style="display:none" onclick="init()">再試行</button>
 </div>
 
 <!-- ログイン画面 -->
@@ -276,37 +284,125 @@
 // ==============================
 // DATA
 // ==============================
-let stores = [
-  { id: 1, name: '上野本店' },
-  { id: 2, name: '銀座店' },
-  { id: 3, name: '新宿店' },
-  { id: 4, name: '渋谷店' },
-];
+const API_URL = 'https://script.google.com/macros/s/AKfycbxskw54ZWRVW-SKAs8vcx7_zlLBQZ9hwm0gqVmJQ5eeUeEfglHZTBDYrYrZuLsDUR-6/exec';
 
-let requests = [
-  {
-    id: 1, storeId: 2, date: '2026-06-15', time: 'ランチ（11:00〜15:00）',
-    staffType: '焼き', count: 2, note: '週末で混みます',
-    status: 'responded', createdAt: '2026-06-10',
-    responses: [{ storeId: 1, count: 1, status: 'pending' }, { storeId: 3, count: 1, status: 'pending' }]
-  },
-  {
-    id: 2, storeId: 3, date: '2026-06-18', time: 'ディナー（17:00〜22:00）',
-    staffType: 'ホール', count: 1, note: '',
-    status: 'open', createdAt: '2026-06-10',
-    responses: []
-  },
-  {
-    id: 3, storeId: 1, date: '2026-06-12', time: '終日',
-    staffType: 'キッチン', count: 1, note: 'スタッフ急病のため',
-    status: 'approved', createdAt: '2026-06-09',
-    responses: [{ storeId: 4, count: 1, status: 'approved' }]
-  },
-];
+let stores = [];
+let requests = [];
 
-let nextId = 4;
 let currentUser = null;
 let respondingRequestId = null;
+
+// ==============================
+// API (JSONP方式: GAS /execへのfetchはCORSでブロックされるためscriptタグ経由で通信)
+// ==============================
+function jsonpRequest(params, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const cbName = '__jsonp_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+    let finished = false;
+    const script = document.createElement('script');
+
+    function cleanup() {
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      clearTimeout(timer);
+    }
+
+    window[cbName] = function(data) {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve(data);
+    };
+
+    const timer = setTimeout(function() {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(new Error('timeout'));
+    }, timeoutMs || 15000);
+
+    const query = new URLSearchParams(params || {});
+    query.set('callback', cbName);
+    query.set('_t', Date.now());
+    script.src = API_URL + '?' + query.toString();
+    script.onerror = function() {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(new Error('script load error'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+async function loadData() {
+  try {
+    const data = await jsonpRequest({});
+    if (data.error) return false;
+    stores = data.stores || [];
+    requests = data.requests || [];
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function apiPost(action, payload) {
+  try {
+    const data = await jsonpRequest({ action: action, payload: JSON.stringify(payload) });
+    if (data.error) { showToast('エラー: ' + data.error); return false; }
+    stores = data.stores || [];
+    requests = data.requests || [];
+    return true;
+  } catch (e) {
+    showToast('通信エラーが発生しました。もう一度お試しください');
+    return false;
+  }
+}
+
+async function init() {
+  document.getElementById('loadingText').textContent = '読み込み中...';
+  document.getElementById('loadingRetryBtn').style.display = 'none';
+  const ok = await loadData();
+  if (ok) {
+    document.getElementById('loadingOverlay').style.display = 'none';
+    if (document.getElementById('loginRole').value === 'store') onRoleChange();
+  } else {
+    document.getElementById('loadingText').textContent = 'データの読み込みに失敗しました。通信環境をご確認のうえ再試行してください。';
+    document.getElementById('loadingRetryBtn').style.display = 'inline-block';
+  }
+}
+
+async function refreshData(silent) {
+  const btn = document.getElementById('refreshBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '更新中...'; }
+  const ok = await loadData();
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 更新'; }
+  if (ok) {
+    renderCurrentView();
+    if (!silent) showToast('最新の情報に更新しました');
+  } else if (!silent) {
+    showToast('更新に失敗しました。通信環境をご確認ください');
+  }
+}
+
+function renderCurrentView() {
+  if (!currentUser) return;
+  if (currentUser.role === 'store') {
+    renderStoreDashboard();
+    const activeTab = document.querySelector('#pageStore .tab-content.active');
+    if (activeTab && activeTab.id === 'openRequests') renderOpenRequests();
+    if (activeTab && activeTab.id === 'history') renderHistory();
+  } else {
+    renderAdminDashboard();
+    const activeTab = document.querySelector('#pageAdmin .tab-content.active');
+    if (activeTab && activeTab.id === 'allRequests') renderAllRequests();
+    if (activeTab && activeTab.id === 'storeList') renderStoreListAdmin();
+  }
+}
+
+// 30秒ごとに自動更新
+setInterval(() => { if (currentUser) refreshData(true); }, 30000);
 
 // ==============================
 // LOGIN / LOGOUT
@@ -324,16 +420,19 @@ function onRoleChange() {
   }
 }
 
-function login() {
+async function login() {
   const role = document.getElementById('loginRole').value;
   if (!role) { showToast('役割を選択してください'); return; }
   if (role === 'store') {
     const storeId = parseInt(document.getElementById('loginStore').value);
     if (!storeId) { showToast('店舗を選択してください'); return; }
+    await loadData();
     const store = stores.find(s => s.id === storeId);
+    if (!store) { showToast('店舗情報が見つかりません。もう一度お試しください'); return; }
     currentUser = { role: 'store', storeId, storeName: store.name };
     document.getElementById('headerUser').textContent = store.name;
   } else {
+    await loadData();
     currentUser = { role: 'admin' };
     document.getElementById('headerUser').textContent = '全体管理者';
   }
@@ -532,17 +631,20 @@ function openRequestModal() {
   document.getElementById('requestModal').classList.add('open');
 }
 
-function submitRequest() {
+async function submitRequest() {
   const date = document.getElementById('reqDate').value;
   const time = document.getElementById('reqTime').value;
   const staffType = document.getElementById('reqStaffType').value;
   const count = parseInt(document.getElementById('reqCount').value);
   const note = document.getElementById('reqNote').value;
   if (!date) { showToast('日付を入力してください'); return; }
-  requests.push({ id: nextId++, storeId: currentUser.storeId, date, time, staffType, count, note, status: 'open', createdAt: new Date().toISOString().split('T')[0], responses: [] });
   closeModal('requestModal');
-  renderStoreDashboard();
-  showToast('依頼を送信しました！');
+  showToast('送信中...');
+  const ok = await apiPost('submitRequest', { storeId: currentUser.storeId, date, time, staffType, count, note });
+  if (ok) {
+    renderCurrentView();
+    showToast('依頼を送信しました！');
+  }
 }
 
 function openRespondModal(reqId) {
@@ -564,34 +666,37 @@ function openRespondModal(reqId) {
   document.getElementById('respondModal').classList.add('open');
 }
 
-function submitResponse() {
+async function submitResponse() {
   const r = requests.find(r => r.id === respondingRequestId);
   const count = parseInt(document.getElementById('respondCount').value);
   if (r.responses.find(res => res.storeId === currentUser.storeId)) {
     showToast('既に応答済みです'); closeModal('respondModal'); return;
   }
-  r.responses.push({ storeId: currentUser.storeId, count, status: 'pending' });
-  r.status = 'responded';
   closeModal('respondModal');
-  renderStoreDashboard();
-  showToast('応答を送りました！');
+  showToast('送信中...');
+  const ok = await apiPost('submitResponse', { requestId: r.id, storeId: currentUser.storeId, count });
+  if (ok) {
+    renderCurrentView();
+    showToast('応答を送りました！');
+  }
 }
 
-function approveResponse(reqId, respStoreId) {
-  const r = requests.find(r => r.id === reqId);
-  r.responses.find(res => res.storeId === respStoreId).status = 'approved';
-  r.status = 'approved';
-  renderAdminDashboard();
-  showToast(`${storeName(respStoreId)} の応答を承認しました`);
+async function approveResponse(reqId, respStoreId) {
+  const name = storeName(respStoreId);
+  const ok = await apiPost('approveResponse', { requestId: reqId, storeId: respStoreId });
+  if (ok) {
+    renderCurrentView();
+    showToast(`${name} の応答を承認しました`);
+  }
 }
 
-function rejectResponse(reqId, respStoreId) {
-  const r = requests.find(r => r.id === reqId);
-  const res = r.responses.find(res => res.storeId === respStoreId);
-  res.status = 'rejected';
-  if (!r.responses.some(res => res.storeId !== respStoreId && res.status !== 'rejected')) r.status = 'open';
-  renderAdminDashboard();
-  showToast(`${storeName(respStoreId)} の応答を却下しました`);
+async function rejectResponse(reqId, respStoreId) {
+  const name = storeName(respStoreId);
+  const ok = await apiPost('rejectResponse', { requestId: reqId, storeId: respStoreId });
+  if (ok) {
+    renderCurrentView();
+    showToast(`${name} の応答を却下しました`);
+  }
 }
 
 function openStoreModal() {
@@ -610,22 +715,27 @@ function renderStoreManageList() {
   `).join('');
 }
 
-function addStore() {
+async function addStore() {
   const name = document.getElementById('newStoreName').value.trim();
   if (!name) { showToast('店舗名を入力してください'); return; }
   if (stores.length >= 20) { showToast('最大20店舗まで登録できます'); return; }
-  stores.push({ id: Math.max(...stores.map(s => s.id)) + 1, name });
-  document.getElementById('newStoreName').value = '';
-  renderStoreManageList();
-  renderAdminDashboard();
-  showToast(`「${name}」を追加しました`);
+  const ok = await apiPost('addStore', { name });
+  if (ok) {
+    document.getElementById('newStoreName').value = '';
+    renderStoreManageList();
+    renderCurrentView();
+    showToast(`「${name}」を追加しました`);
+  }
 }
 
-function removeStore(id) {
-  stores = stores.filter(s => s.id !== id);
-  renderStoreManageList();
-  renderAdminDashboard();
-  showToast('店舗を削除しました');
+async function removeStore(id) {
+  if (stores.length <= 1) { showToast('最低1店舗は必要です'); return; }
+  const ok = await apiPost('removeStore', { id });
+  if (ok) {
+    renderStoreManageList();
+    renderCurrentView();
+    showToast('店舗を削除しました');
+  }
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -639,6 +749,11 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2800);
 }
+
+// ==============================
+// 初期化
+// ==============================
+init();
 </script>
 </body>
 </html>
