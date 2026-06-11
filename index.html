@@ -490,7 +490,7 @@ function switchTab(tabId, context) {
 function renderStoreDashboard() {
   document.getElementById('storeName').textContent = currentUser.storeName;
   const myReqs = requests.filter(r => r.storeId === currentUser.storeId);
-  const openFromOthers = requests.filter(r => r.storeId !== currentUser.storeId && r.status === 'open');
+  const openFromOthers = requests.filter(r => r.storeId !== currentUser.storeId && isRecruitingForStore(r, currentUser.storeId));
   document.getElementById('storeStats').innerHTML = `
     <div class="stat-card"><div class="stat-num">${myReqs.filter(r=>r.status!=='approved'&&r.status!=='rejected').length}</div><div class="stat-label">進行中の依頼</div></div>
     <div class="stat-card"><div class="stat-num">${openFromOthers.length}</div><div class="stat-label">他店舗の募集</div></div>
@@ -509,7 +509,7 @@ function renderMyRequests() {
 }
 
 function renderOpenRequests() {
-  const list = requests.filter(r => r.storeId !== currentUser.storeId && r.status === 'open');
+  const list = requests.filter(r => r.storeId !== currentUser.storeId && isRecruitingForStore(r, currentUser.storeId));
   const el = document.getElementById('openRequestsList');
   if (list.length === 0) { el.innerHTML = emptyState('🎉', '他店舗の募集はありません'); return; }
   el.innerHTML = list.map(r => requestCard(r, 'store-respond')).join('');
@@ -592,6 +592,14 @@ function statusBadge(status) {
 function storeName(id) {
   const s = stores.find(s => s.id === id);
   return s ? s.name : '不明';
+}
+
+// A request still counts as "recruiting" for another store if:
+// - it's not yet fully filled (status !== 'approved'), and
+// - that store hasn't already submitted an active (non-rejected) response
+function isRecruitingForStore(r, storeId) {
+  if (r.status === 'approved') return false;
+  return !r.responses.some(res => res.storeId === storeId && res.status !== 'rejected');
 }
 
 function requestCard(r, mode) {
