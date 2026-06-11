@@ -543,7 +543,8 @@ function renderPendingApproval() {
 function renderAllRequests() {
   const el = document.getElementById('allRequestsList');
   if (requests.length === 0) { el.innerHTML = emptyState('📋', 'リクエストはありません'); return; }
-  el.innerHTML = [...requests].reverse().map(r => requestCard(r, 'admin-view')).join('');
+  const sorted = [...requests].sort((a, b) => a.date.localeCompare(b.date));
+  el.innerHTML = sorted.map(r => requestCard(r, 'admin-view')).join('');
 }
 
 function renderStoreListAdmin() {
