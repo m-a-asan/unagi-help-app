@@ -175,10 +175,12 @@
       <button class="tab-btn active" onclick="switchTab('myRequests','store')">自店舗の依頼</button>
       <button class="tab-btn" onclick="switchTab('openRequests','store')">他店舗の依頼 <span id="openBadge" style="background:#e74c3c;color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:2px"></span></button>
       <button class="tab-btn" onclick="switchTab('history','store')">履歴</button>
+      <button class="tab-btn" onclick="switchTab('allRequestsStore','store')">全リクエスト</button>
     </div>
     <div id="myRequests" class="tab-content active"><div id="myRequestsList"></div></div>
     <div id="openRequests" class="tab-content"><div id="openRequestsList"></div></div>
     <div id="history" class="tab-content"><div id="historyList"></div></div>
+    <div id="allRequestsStore" class="tab-content"><div id="allRequestsStoreList"></div></div>
   </div>
 </div>
 
@@ -398,6 +400,7 @@ function renderCurrentView() {
     const activeTab = document.querySelector('#pageStore .tab-content.active');
     if (activeTab && activeTab.id === 'openRequests') renderOpenRequests();
     if (activeTab && activeTab.id === 'history') renderHistory();
+    if (activeTab && activeTab.id === 'allRequestsStore') renderAllRequestsStore();
   } else {
     renderAdminDashboard();
     const activeTab = document.querySelector('#pageAdmin .tab-content.active');
@@ -475,6 +478,7 @@ function switchTab(tabId, context) {
   if (tabId === 'myRequests') renderMyRequests();
   if (tabId === 'openRequests') renderOpenRequests();
   if (tabId === 'history') renderHistory();
+  if (tabId === 'allRequestsStore') renderAllRequestsStore();
   if (tabId === 'pendingApproval') renderPendingApproval();
   if (tabId === 'allRequests') renderAllRequests();
   if (tabId === 'storeList') renderStoreListAdmin();
@@ -516,6 +520,13 @@ function renderHistory() {
   const el = document.getElementById('historyList');
   if (list.length === 0) { el.innerHTML = emptyState('📂', '履歴はありません'); return; }
   el.innerHTML = list.map(r => requestCard(r, 'history')).join('');
+}
+
+function renderAllRequestsStore() {
+  const el = document.getElementById('allRequestsStoreList');
+  if (requests.length === 0) { el.innerHTML = emptyState('📋', 'リクエストはありません'); return; }
+  const sorted = [...requests].sort((a, b) => a.date.localeCompare(b.date));
+  el.innerHTML = sorted.map(r => requestCard(r, 'view-only')).join('');
 }
 
 // ==============================
