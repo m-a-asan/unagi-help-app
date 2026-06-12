@@ -605,11 +605,20 @@ function storeName(id) {
   return s ? s.name : '不明';
 }
 
+// 部分承認対応：承認済み人数の合計と残り必要人数
+function approvedTotal(r) {
+  return r.responses.filter(res => res.status === 'approved').reduce((sum, res) => sum + res.count, 0);
+}
+
+function remainingCount(r) {
+  return Math.max(0, r.count - approvedTotal(r));
+}
+
 // A request still counts as "recruiting" for another store if:
 // - it's not yet fully filled (status !== 'approved'), and
 // - that store hasn't already submitted an active (non-rejected) response
 function isRecruitingForStore(r, storeId) {
-  if (r.status === 'approved') return false;
+  if (r.status === 'approved' || remainingCount(r) <= 0) return false;
   return !r.responses.some(res => res.storeId === storeId && res.status !== 'rejected');
 }
 
@@ -622,7 +631,7 @@ function requestCard(r, mode) {
           <span class="response-store">🏪 ${escapeHtml(storeName(res.storeId))}</span>
           <span class="response-count">${res.count}名 派遣可能</span>
           ${res.names ? `<span class="response-names">👤 ${escapeHtml(res.names)}</span>` : ''}
-          ${mode === 'admin-approve' ? `
+          ${mode === 'admin-approve' && res.status === 'pending' ? `
             <div style="display:flex;gap:6px">
               <button class="btn btn-success btn-sm" onclick="approveResponse(${r.id},${res.storeId})">承認</button>
               <button class="btn btn-danger btn-sm" onclick="rejectResponse(${r.id},${res.storeId})">却下</button>
@@ -649,6 +658,7 @@ function requestCard(r, mode) {
         <span>📅 ${escapeHtml(r.date)}</span>
         <span>⏰ ${escapeHtml(r.time)}</span>
         <span>👥 ${r.count}名</span>
+        ${approvedTotal(r) > 0 ? `<span>✅ 承認済 ${approvedTotal(r)}/${r.count}名${remainingCount(r) > 0 ? `（あと${remainingCount(r)}名募集中）` : ''}</span>` : ''}
       </div>
       <div>${staffTag(r.staffType)}</div>
       ${r.note ? `<div style="font-size:13px;color:#777;margin-top:8px">📝 ${escapeHtml(r.note)}</div>` : ''}
@@ -695,19 +705,20 @@ function openRespondModal(reqId) {
     return;
   }
   respondingRequestId = reqId;
+  const remaining = remainingCount(r);
   document.getElementById('respondDetail').innerHTML = `
     <div style="background:#f9f3ec;border-radius:8px;padding:14px">
       <div style="font-weight:700;margin-bottom:6px">${escapeHtml(storeName(r.storeId))} からの依頼</div>
       <div style="font-size:13px;color:#555;line-height:1.6">
         📅 ${escapeHtml(r.date)} / ⏰ ${escapeHtml(r.time)}<br>
-        ${staffTag(r.staffType)} ${r.count}名必要
+        ${staffTag(r.staffType)} ${remaining < r.count ? `あと${remaining}名必要（全${r.count}名中 ${approvedTotal(r)}名承認済）` : `${r.count}名必要`}
         ${r.note ? `<br>📝 ${escapeHtml(r.note)}` : ''}
       </div>
     </div>
   `;
   const sel = document.getElementById('respondCount');
   sel.innerHTML = '';
-  for (let i = 1; i <= r.count; i++) sel.innerHTML += `<option value="${i}">${i}名</option>`;
+  for (let i = 1; i <= remaining; i++) sel.innerHTML += `<option value="${i}">${i}名</option>`;
   document.getElementById('respondNames').value = '';
   document.getElementById('respondModal').classList.add('open');
 }

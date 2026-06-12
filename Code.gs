@@ -255,7 +255,7 @@ function submitResponse(payload) {
 
   var request = findRequest(requestId);
   if (!request) throw new Error('依頼が見つかりません');
-  if (String(request.status) === 'approved') throw new Error('この依頼は既に承認済みです');
+  if (String(request.status) === 'approved') throw new Error('この依頼は必要人数に達しています');
   if (Number(request.storeId) === storeId) throw new Error('自店舗の依頼には応答できません');
 
   var sheet = getSheet('Responses');
@@ -293,32 +293,38 @@ function submitResponse(payload) {
       status: 'pending'
     });
   }
-  setRequestStatus(requestId, 'responded');
+  updateRequestStatus(requestId);
 }
 
 function approveResponse(payload) {
   setResponseStatus(payload.requestId, payload.storeId, 'approved');
-  setRequestStatus(payload.requestId, 'approved');
+  updateRequestStatus(payload.requestId);
 }
 
 function rejectResponse(payload) {
   setResponseStatus(payload.requestId, payload.storeId, 'rejected');
+  updateRequestStatus(payload.requestId);
+}
 
-  var sheet = getSheet('Responses');
-  var values = sheet.getDataRange().getValues();
-  var headers = values[0];
-  var reqIdCol = headers.indexOf('requestId');
-  var statusCol = headers.indexOf('status');
-  var hasNonRejected = false;
-  for (var i = 1; i < values.length; i++) {
-    if (Number(values[i][reqIdCol]) === Number(payload.requestId) && String(values[i][statusCol]) !== 'rejected') {
-      hasNonRejected = true;
-      break;
-    }
+// 部分承認対応：承認済み人数の合計が必要人数に達したらapproved、
+// 承認待ちの応答が残っていればresponded、それ以外は引き続きopen（募集中）
+function updateRequestStatus(requestId) {
+  var request = findRequest(Number(requestId));
+  if (!request) throw new Error('依頼が見つかりません');
+  var responses = sheetToObjects(getSheet('Responses'));
+  var approvedTotal = 0;
+  var hasPending = false;
+  for (var i = 0; i < responses.length; i++) {
+    if (Number(responses[i].requestId) !== Number(requestId)) continue;
+    var st = String(responses[i].status);
+    if (st === 'approved') approvedTotal += Number(responses[i].count);
+    else if (st === 'pending') hasPending = true;
   }
-  if (!hasNonRejected) {
-    setRequestStatus(payload.requestId, 'open');
-  }
+  var status;
+  if (approvedTotal >= Number(request.count)) status = 'approved';
+  else if (hasPending) status = 'responded';
+  else status = 'open';
+  setRequestStatus(requestId, status);
 }
 
 function setRequestStatus(requestId, status) {
