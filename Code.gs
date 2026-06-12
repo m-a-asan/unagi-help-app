@@ -1,45 +1,112 @@
+var MAX_STORES = 20;
+
+// フロントエンドはJSONP（GET + callbackパラメータ）で通信するため、
+// 読み取りも書き込みもdoGetで処理する。doPostは互換用に残す。
 function doGet(e) {
-  return jsonResponse(getDataset());
+  var params = (e && e.parameter) || {};
+  var result;
+  if (params.action) {
+    result = runAction(params.action, parsePayload(params.payload));
+  } else {
+    try {
+      result = getDataset();
+    } catch (err) {
+      result = { error: errorMessage(err) };
+    }
+  }
+  return jsonResponse(result, params.callback);
 }
 
 function doPost(e) {
-  var body = JSON.parse(e.postData.contents);
-  var action = body.action;
-  var payload = body.payload || {};
-
-  switch (action) {
-    case 'addStore':
-      addStore(payload);
-      break;
-    case 'removeStore':
-      removeStore(payload);
-      break;
-    case 'submitRequest':
-      submitRequest(payload);
-      break;
-    case 'submitResponse':
-      submitResponse(payload);
-      break;
-    case 'approveResponse':
-      approveResponse(payload);
-      break;
-    case 'rejectResponse':
-      rejectResponse(payload);
-      break;
-    default:
-      return jsonResponse({ error: 'Unknown action: ' + action });
+  var body;
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return jsonResponse({ error: 'Invalid JSON body' });
   }
-
-  return jsonResponse(getDataset());
+  return jsonResponse(runAction(body.action, body.payload || {}));
 }
 
-function jsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
+function parsePayload(raw) {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    return {};
+  }
+}
+
+function runAction(action, payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (err) {
+    return { error: '他の処理が実行中です。少し待ってからもう一度お試しください' };
+  }
+  try {
+    switch (action) {
+      case 'addStore':
+        addStore(payload);
+        break;
+      case 'removeStore':
+        removeStore(payload);
+        break;
+      case 'submitRequest':
+        submitRequest(payload);
+        break;
+      case 'submitResponse':
+        submitResponse(payload);
+        break;
+      case 'approveResponse':
+        approveResponse(payload);
+        break;
+      case 'rejectResponse':
+        rejectResponse(payload);
+        break;
+      default:
+        return { error: 'Unknown action: ' + action };
+    }
+    return getDataset();
+  } catch (err) {
+    return { error: errorMessage(err) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function errorMessage(err) {
+  return err && err.message ? err.message : String(err);
+}
+
+function jsonResponse(obj, callback) {
+  var json = JSON.stringify(obj);
+  // コールバック名は識別子のみ許可（JSONP経由のスクリプト注入を防ぐ）
+  if (callback && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(callback)) {
+    return ContentService.createTextOutput(callback + '(' + json + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 function getSheet(name) {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sheet) {
+    throw new Error('シート「' + name + '」が見つかりません。スプレッドシートの設定を確認してください');
+  }
+  return sheet;
+}
+
+function getHeaders(sheet) {
+  return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+}
+
+function appendRowByHeaders(sheet, obj) {
+  var headers = getHeaders(sheet);
+  var row = headers.map(function(h) {
+    return obj.hasOwnProperty(h) ? obj[h] : '';
+  });
+  sheet.appendRow(row);
 }
 
 function sheetToObjects(sheet) {
@@ -84,6 +151,7 @@ function getDataset() {
       requestId: Number(r.requestId),
       storeId: Number(r.storeId),
       count: Number(r.count),
+      names: r.names ? String(r.names) : '',
       status: String(r.status)
     };
   });
@@ -101,7 +169,7 @@ function getDataset() {
       status: String(r.status),
       createdAt: formatDate(r.createdAt),
       responses: responsesRaw.filter(function(resp) { return resp.requestId === id; }).map(function(resp) {
-        return { storeId: resp.storeId, count: resp.count, status: resp.status };
+        return { storeId: resp.storeId, count: resp.count, names: resp.names, status: resp.status };
       })
     };
   });
@@ -110,42 +178,122 @@ function getDataset() {
 }
 
 function addStore(payload) {
+  var name = payload.name ? String(payload.name).trim() : '';
+  if (!name) throw new Error('店舗名を入力してください');
+
   var sheet = getSheet('Stores');
   var stores = sheetToObjects(sheet);
+  if (stores.length >= MAX_STORES) throw new Error('最大' + MAX_STORES + '店舗まで登録できます');
+
   var maxId = 0;
-  stores.forEach(function(s) { maxId = Math.max(maxId, Number(s.id)); });
-  sheet.appendRow([maxId + 1, payload.name]);
+  for (var i = 0; i < stores.length; i++) {
+    if (String(stores[i].name) === name) throw new Error('同じ名前の店舗が既に登録されています');
+    maxId = Math.max(maxId, Number(stores[i].id));
+  }
+  appendRowByHeaders(sheet, { id: maxId + 1, name: name });
 }
 
 function removeStore(payload) {
   var sheet = getSheet('Stores');
   var values = sheet.getDataRange().getValues();
+  if (values.length <= 2) throw new Error('最低1店舗は必要です');
   for (var i = 1; i < values.length; i++) {
     if (Number(values[i][0]) === Number(payload.id)) {
       sheet.deleteRow(i + 1);
-      break;
+      return;
     }
   }
+  throw new Error('店舗が見つかりません');
 }
 
 function submitRequest(payload) {
+  var storeId = Number(payload.storeId);
+  var count = Number(payload.count);
+  if (!payload.date) throw new Error('日付を入力してください');
+  if (!(count >= 1)) throw new Error('必要人数が正しくありません');
+  if (!findStore(storeId)) throw new Error('店舗情報が見つかりません');
+
   var sheet = getSheet('Requests');
   var requests = sheetToObjects(sheet);
   var maxId = 0;
   requests.forEach(function(r) { maxId = Math.max(maxId, Number(r.id)); });
-  var newId = maxId + 1;
   var createdAt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  sheet.appendRow([
-    newId, payload.storeId, payload.date, payload.time,
-    payload.staffType, payload.count, payload.note || '',
-    'open', createdAt
-  ]);
+  appendRowByHeaders(sheet, {
+    id: maxId + 1,
+    storeId: storeId,
+    date: String(payload.date),
+    time: String(payload.time || ''),
+    staffType: String(payload.staffType || ''),
+    count: count,
+    note: payload.note ? String(payload.note) : '',
+    status: 'open',
+    createdAt: createdAt
+  });
+}
+
+function findStore(storeId) {
+  var stores = sheetToObjects(getSheet('Stores'));
+  for (var i = 0; i < stores.length; i++) {
+    if (Number(stores[i].id) === storeId) return stores[i];
+  }
+  return null;
+}
+
+function findRequest(requestId) {
+  var requests = sheetToObjects(getSheet('Requests'));
+  for (var i = 0; i < requests.length; i++) {
+    if (Number(requests[i].id) === requestId) return requests[i];
+  }
+  return null;
 }
 
 function submitResponse(payload) {
-  var responsesSheet = getSheet('Responses');
-  responsesSheet.appendRow([payload.requestId, payload.storeId, payload.count, 'pending']);
-  setRequestStatus(payload.requestId, 'responded');
+  var requestId = Number(payload.requestId);
+  var storeId = Number(payload.storeId);
+  var count = Number(payload.count);
+  if (!(count >= 1)) throw new Error('派遣人数が正しくありません');
+
+  var request = findRequest(requestId);
+  if (!request) throw new Error('依頼が見つかりません');
+  if (String(request.status) === 'approved') throw new Error('この依頼は既に承認済みです');
+  if (Number(request.storeId) === storeId) throw new Error('自店舗の依頼には応答できません');
+
+  var sheet = getSheet('Responses');
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var reqIdCol = headers.indexOf('requestId');
+  var storeIdCol = headers.indexOf('storeId');
+  var countCol = headers.indexOf('count');
+  var namesCol = headers.indexOf('names');
+  var statusCol = headers.indexOf('status');
+
+  // 却下済みの応答があれば上書きして再応答、未却下の応答があればエラー
+  var rejectedRow = -1;
+  for (var i = 1; i < values.length; i++) {
+    if (Number(values[i][reqIdCol]) === requestId && Number(values[i][storeIdCol]) === storeId) {
+      if (String(values[i][statusCol]) === 'rejected') {
+        rejectedRow = i + 1;
+      } else {
+        throw new Error('既に応答済みです');
+      }
+    }
+  }
+
+  var names = payload.names ? String(payload.names) : '';
+  if (rejectedRow > 0) {
+    sheet.getRange(rejectedRow, countCol + 1).setValue(count);
+    if (namesCol >= 0) sheet.getRange(rejectedRow, namesCol + 1).setValue(names);
+    sheet.getRange(rejectedRow, statusCol + 1).setValue('pending');
+  } else {
+    appendRowByHeaders(sheet, {
+      requestId: requestId,
+      storeId: storeId,
+      count: count,
+      names: names,
+      status: 'pending'
+    });
+  }
+  setRequestStatus(requestId, 'responded');
 }
 
 function approveResponse(payload) {
@@ -156,11 +304,14 @@ function approveResponse(payload) {
 function rejectResponse(payload) {
   setResponseStatus(payload.requestId, payload.storeId, 'rejected');
 
-  var responsesSheet = getSheet('Responses');
-  var values = responsesSheet.getDataRange().getValues();
+  var sheet = getSheet('Responses');
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var reqIdCol = headers.indexOf('requestId');
+  var statusCol = headers.indexOf('status');
   var hasNonRejected = false;
   for (var i = 1; i < values.length; i++) {
-    if (Number(values[i][0]) === Number(payload.requestId) && String(values[i][3]) !== 'rejected') {
+    if (Number(values[i][reqIdCol]) === Number(payload.requestId) && String(values[i][statusCol]) !== 'rejected') {
       hasNonRejected = true;
       break;
     }
@@ -179,9 +330,10 @@ function setRequestStatus(requestId, status) {
   for (var i = 1; i < values.length; i++) {
     if (Number(values[i][idCol]) === Number(requestId)) {
       sheet.getRange(i + 1, statusCol).setValue(status);
-      break;
+      return;
     }
   }
+  throw new Error('依頼が見つかりません');
 }
 
 function setResponseStatus(requestId, storeId, status) {
@@ -192,9 +344,12 @@ function setResponseStatus(requestId, storeId, status) {
   var reqIdCol = headers.indexOf('requestId');
   var storeIdCol = headers.indexOf('storeId');
   for (var i = 1; i < values.length; i++) {
-    if (Number(values[i][reqIdCol]) === Number(requestId) && Number(values[i][storeIdCol]) === Number(storeId)) {
+    if (Number(values[i][reqIdCol]) === Number(requestId) &&
+        Number(values[i][storeIdCol]) === Number(storeId) &&
+        String(values[i][statusCol - 1]) !== 'rejected') {
       sheet.getRange(i + 1, statusCol).setValue(status);
-      break;
+      return;
     }
   }
+  throw new Error('応答が見つかりません');
 }
